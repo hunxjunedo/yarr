@@ -1,9 +1,10 @@
 mod future;
 mod http;
 mod runtime;
-use std::future::ready;
 use future::{Future, PollState};
 use runtime::Runtime;
+
+use crate::runtime::Waker;
 fn main() {
     let future = async_main();
     let mut runtime = Runtime::new();
@@ -12,21 +13,7 @@ fn main() {
 
 
 
-struct Ready {
-    text: String
-}
-impl Ready {
-     fn new(txt: String) -> Self {
-        Self { text:  txt}
-    }
-}
-impl Future for Ready {
-    type Output = String;
 
-    fn poll(&mut self) -> PollState<Self::Output> {
-        PollState::Ready(String::from("Sup bitch"))
-    }
-}
 
 // =================================
 // We rewrite this:
@@ -70,7 +57,7 @@ impl Coroutine0 {
 impl Future for Coroutine0 {
     type Output = String;
 
-    fn poll(&mut self) -> PollState<Self::Output> {
+    fn poll(&mut self, waker: &Waker) -> PollState<Self::Output> {
         loop {
         match self.state {
                 State0::Start => {
@@ -83,7 +70,7 @@ impl Future for Coroutine0 {
                 }
 
                 State0::Wait1(ref mut f1) => {
-                    match f1.poll() {
+                    match f1.poll(&waker) {
                         PollState::Ready(txt) => {
                             // ---- Code you actually wrote ----
                             println!("{txt}");
@@ -97,7 +84,7 @@ impl Future for Coroutine0 {
                 }
 
                 State0::Wait2(ref mut f2) => {
-                    match f2.poll() {
+                    match f2.poll(&waker) {
                         PollState::Ready(txt) => {
                             // ---- Code you actually wrote ----
                             println!("{txt}");
