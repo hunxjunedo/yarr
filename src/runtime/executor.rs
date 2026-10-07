@@ -1,4 +1,5 @@
 use std::{cell::{Cell, RefCell}, collections::HashMap, ops::Add, sync::{Arc, Mutex}, thread::{self, Thread}};
+use crate::future::{Future, PollState::{Ready, NotReady}};
 
 pub struct Waker {
     //something responsible for waking a particular thread
@@ -76,7 +77,7 @@ where F: Future<Output = String> + 'static
     //Suppose we had a multi-threaded environment where work-stealing was also possible. If an executor (which there will be many of, running on multiple threads) wants to poll some future till waitpoint, it has to remove it from the list so others can't also poll it.
     //therefore, remove future from the list, poll it, if you get NotReady put it back. if you get ready, well you are done!
 
-    fn get_future<F>(&self, id: usize) -> Option<Task> 
+    fn get_future(&self, id: usize) -> Option<Task> 
     {
         CURRENT_EXEC.with(|v|{
             v.tasks.borrow_mut().remove(&id)
@@ -109,6 +110,48 @@ where F: Future<Output = String> + 'static
         })
     }
     
+
+    //finally, we want to provide a function that the main thread blocks on, until no tasks left.
+    pub fn block_on<F>(&mut self, future: F)
+    where F: Future<Output = String> + 'static 
+    {
+        //1. add to the tasks
+        spawn(future);
+
+        //2. start the main loop
+        loop {
+            //get futures one by one
+            match self.get_ready_future() {
+                Some(id) => {
+                    //get the actual future
+                    let ft = self.get_future(id);
+                    if ft.is_none() {
+                        //this means we got woken by an event, associated with a top-level future that does not exist!
+                        //it is not in the tasks list! so why did we woke up for this ?
+                        //false wakeup, handle here
+                        continue;
+                    }
+                    //          called shadowing
+                    let mut ft = ft.unwrap();
+                    match ft.poll(&self.get_waker(id)) {
+                        NotReady => {
+                            //add it back to the tasks, we have done polling it till waitpoint
+                            self.new_task(id, ft);
+                        }
+                        Ready(_) => {continue;}
+                    }
+                },
+                None => {
+                    if self.no_tasks_left() {
+                        break
+                    }else{
+                        thread::park();
+                    }
+                }
+            }
+        }
+    }
+
  }
 
- 
+ //here is the main thing
