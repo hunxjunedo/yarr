@@ -9,13 +9,18 @@ type Wakers = Arc<Mutex<HashMap<usize, Waker>>>; //since this data will be writt
 //again a static variable, so that it can be accessed from anywhere
 static CURRENT_REACTOR: OnceLock<Reactor> = OnceLock::new();
 
-struct Reactor {
+pub struct Reactor {
     //these are the wakers passed to us by the leaf futures
     wakers: Wakers,
     //simple maintain an internal registery which we will block on once we are free, this does not mean the futures are not progressing, never.
     registry: Registry,
     //unique id that leaf futures will use while sending tasks to register interest in
     next_id: AtomicUsize
+}
+
+pub fn reactor() -> &'static Reactor {
+    CURRENT_REACTOR.get().expect("Called outside an runtime context")
+    //means not reactor not yet setup. aka spawn not called yet
 }
 
 //ofcourse the reactor should expose functions that allow futures to register interest in some I/O
