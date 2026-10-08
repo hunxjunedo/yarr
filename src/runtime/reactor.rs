@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock}};
+use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock, atomic::AtomicUsize}, thread};
 
 use mio::{Events, Interest, Poll, Registry, event::Source};
 
@@ -13,7 +13,9 @@ struct Reactor {
     //these are the wakers passed to us by the leaf futures
     wakers: Wakers,
     //simple maintain an internal registery which we will block on once we are free, this does not mean the futures are not progressing, never.
-    registry: Registry
+    registry: Registry,
+    //unique id that leaf futures will use while sending tasks to register interest in
+    next_id: AtomicUsize
 }
 
 //ofcourse the reactor should expose functions that allow futures to register interest in some I/O
@@ -25,7 +27,6 @@ impl Reactor {
         //now register waker
         self.wakers.lock().unwrap().insert(id, waker.clone());
     }
-
 
 }
 
@@ -43,4 +44,19 @@ impl Reactor {
                 }
             }
         }
+    }
+
+    //what do we need to start the reactor ?
+    pub fn start() {
+        //spawn a seperate thread that runs independently, and its sole job is to REACT
+        //on that seperate thread we will run our event loop, which requires poll and wakers
+        let wakers: Wakers = Arc::new(Mutex::new(HashMap::new()));
+        let poll = Poll::new().unwrap();
+        //almost there, the event loop will look on the static variable holding current executor, so let's place it there
+        CURRENT_REACTOR.set(Reactor { wakers: wakers.clone(), registry : poll.registry().try_clone().unwrap(), next_id: AtomicUsize::new(1) });
+        //static variable has the value, now kick off the event loop
+        //move because we dont need anymore
+        thread::spawn(move || {
+            event_loop(poll, wakers);
+        });
     }
