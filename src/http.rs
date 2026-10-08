@@ -65,6 +65,7 @@ impl Future for HttpGetFuture {
             match self.stream.as_mut().unwrap().read(&mut buff) {
                 Ok(0) => {
                     let s = String::from_utf8_lossy(&self.buffer);
+                    //we are returning here too, we are no longer interested in this stream, so un_register
                     break PollState::Ready(s.to_string());
                 }
                 Ok(n) => {
@@ -72,7 +73,7 @@ impl Future for HttpGetFuture {
                     continue;
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
-                    //we are about to return, so lets make sure latest waker is associated
+                    //we are about to return, so lets make sure latest waker is associated, check the comments on top of function implementation for more details
                     reactor().update_waker(self.id, waker);
                     break PollState::NotReady;
                 }
