@@ -50,6 +50,15 @@ impl Reactor {
         self.next_id.fetch_add(1, Relaxed)
     }
 
+    //naturally, allow to unregister interest on a source if its associated future has already returned ready
+    pub fn unregister(&self, source: &mut impl Source, id: usize) {
+        //if we unregistered with mio we wont recieve any associated events, so why even keep the waker in memory ?
+        self.wakers.lock().unwrap().remove(&id);
+        //now actually unregister with mio
+        self.registry.deregister(source);
+
+    }
+
 }
 
     fn event_loop(mut poll: Poll, wakers: Wakers) {
