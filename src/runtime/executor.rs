@@ -55,7 +55,7 @@ where
         //we have told the executor that this is also one of the tasks it should be handling
         //now tell it to poll it also, since futures are eager, and you have to poll first time also
         v.next_id.set(id + 1);
-        v.ready_queue.lock().unwrap().push(id + 1);
+        v.ready_queue.lock().unwrap().push(id);
     });
 }
 
