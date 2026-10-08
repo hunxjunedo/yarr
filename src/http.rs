@@ -1,5 +1,5 @@
 use mio::{Interest, Token};
-use crate::{Future, future::PollState, runtime::Waker, runtime::reactor};
+use crate::{Future, future::PollState, runtime::{self, Waker, reactor}};
 use std::io::{ErrorKind, Read, Write};
 
 fn get_req(path: &str) -> String {
@@ -72,6 +72,8 @@ impl Future for HttpGetFuture {
                     continue;
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                    //we are about to return, so lets make sure latest waker is associated
+                    reactor().update_waker(self.id, waker);
                     break PollState::NotReady;
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {
