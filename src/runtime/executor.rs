@@ -5,11 +5,11 @@ use crate::future::{
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
-    ops::Add,
     sync::{Arc, Mutex},
     thread::{self, Thread},
 };
 
+#[derive(Clone)]
 pub struct Waker {
     //something responsible for waking a particular thread
     thread: Thread, //handle to the thread which is parked, waiting for some event
