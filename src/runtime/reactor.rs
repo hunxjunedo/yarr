@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock, atomic::AtomicUsize}, thread};
+use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock, atomic::{AtomicUsize, Ordering::Relaxed},}, thread};
 
 use mio::{Events, Interest, Poll, Registry, event::Source};
 
@@ -26,6 +26,11 @@ impl Reactor {
         self.registry.register(source, mio::Token(id), interest);
         //now register waker
         self.wakers.lock().unwrap().insert(id, waker.clone());
+    }
+
+    pub fn next_id(&self) -> usize {
+        //give out next id, by incrementing. atomically safe.
+        self.next_id.fetch_add(1, Relaxed)
     }
 
 }
