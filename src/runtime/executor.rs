@@ -65,8 +65,8 @@ pub struct Executor;
 //no need for values, since that is already internally persistent
 
 impl Executor {
-    pub fn new() {
-        Self {};
+    pub fn new() -> Self {
+        Self {}
     }
 
     //id means the unique top-level task. when our I/O calls regsiter interest, they pass a waker which has embedded into it an id associated with that particular event. many wakers might wake up the thread, but every waker is able to tell who is responsible for triggering wake-up/unpark
