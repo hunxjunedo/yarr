@@ -2,13 +2,11 @@ mod future;
 mod http;
 mod runtime;
 use future::{Future, PollState};
-use runtime::Runtime;
 
 use crate::runtime::Waker;
 fn main() {
-    let future = async_main();
-    let mut runtime = Runtime::new();
-    runtime.block_on(future);
+    let mut executor = runtime::init();
+    executor.block_on(async_main());
 }
 
 
