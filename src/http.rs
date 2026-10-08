@@ -1,8 +1,6 @@
 use mio::{Interest, Token};
-
-use crate::{Future, future::PollState, runtime::Waker};
+use crate::{Future, future::PollState, runtime::Waker, runtime::reactor};
 use std::io::{ErrorKind, Read, Write};
-use crate::runtime;
 
 fn get_req(path: &str) -> String {
     format!(
@@ -25,6 +23,7 @@ struct HttpGetFuture {
     stream: Option<mio::net::TcpStream>,
     buffer: Vec<u8>,
     path: String,
+    id: usize
 }
 
 impl HttpGetFuture {
@@ -33,6 +32,7 @@ impl HttpGetFuture {
             stream: None,
             buffer: vec![],
             path: path.to_string(),
+            id: reactor().next_id()
         }
     }
 
@@ -53,11 +53,12 @@ impl Future for HttpGetFuture {
         if self.stream.is_none() {
             println!("FIRST POLL - START OPERATION");
             self.write_request();
-            runtime::registry().register(self.stream.as_mut().unwrap(), Token(1), Interest::READABLE).expect("could not register interest");
+            let stream = self.stream.as_mut().unwrap();
+            //updated method of registering interest
+            reactor().register(stream, Interest::READABLE, self.id, waker);
             // return PollState::NotReady;
             // principle of polling: do not yield until you absolutely have to wait on something. You dont necessirily have to wait on stream, UNLESS it says would block.
         }
-        println!("sup");
 
         let mut buff = vec![0u8; 4096];
         loop {
