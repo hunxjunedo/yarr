@@ -66,6 +66,7 @@ impl Future for HttpGetFuture {
                 Ok(0) => {
                     let s = String::from_utf8_lossy(&self.buffer);
                     //we are returning here too, we are no longer interested in this stream, so un_register
+                    reactor().unregister(self.stream.as_mut().unwrap(), self.id);
                     break PollState::Ready(s.to_string());
                 }
                 Ok(n) => {
