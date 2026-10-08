@@ -33,6 +33,18 @@ impl Reactor {
         self.wakers.lock().unwrap().insert(id, waker.clone());
     }
 
+    //our runtime does not support work-stealing as of not, which means futures won't move from one executor to another -> the sleeping thread which is supposed to be woken up for our future will never change -> waker will remain valid through out
+    //however in a runtime that does support work stealing, in worst case, a future might change the hosting executor on between every poll.
+    //once executor A (running on thread A) polls a future and recieved notReady, it might put it back in its tasks. Another executor B (running on thread B) might steal this task from A. once B polls it and is has no futures ready to poll,
+    //and is therefore parked, but the waker passed to the future while polling will remain same, even when it has to be updated, since now another thread needs to be woke up for this future.
+    //therefore let us expose a function that allows updating the waker
+
+    //the poll function of a future is responsible for making sure interest is registered on the latest waker, which can be achieved by
+    //always calling update_waker before ending a poll (returning NotReady)
+    pub fn update_waker(&self, id: usize, waker: &Waker) {
+        //automatically updates
+        self.wakers.lock().unwrap().insert(id, waker.clone());
+    }
     pub fn next_id(&self) -> usize {
         //give out next id, by incrementing. atomically safe.
         self.next_id.fetch_add(1, Relaxed)
