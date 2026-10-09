@@ -1,5 +1,5 @@
 use mio::{Interest, Token};
-use crate::{Future, future::PollState, runtime::{self, Waker, reactor}};
+use crate::{future::Future, future::PollState, runtime::{self, Waker, reactor}};
 use std::io::{ErrorKind, Read, Write};
 
 fn get_req(path: &str) -> String {
@@ -14,8 +14,8 @@ fn get_req(path: &str) -> String {
 pub struct Http;
 
 impl Http {
-    pub fn get(path: &str) -> impl Future<Output = String> {
-        HttpGetFuture::new(path)
+    pub fn get(path: String) -> impl Future<Output = String> {
+        HttpGetFuture::new(&path)
     }
 }
 
