@@ -125,6 +125,8 @@ impl Executor {
             },
             NotReady => {}
         }
+        println!("Your future did not return Ready on the first poll. \n It has been polled once and we are going to move it, which means the internal pointers will become invalid, and the second poll will panic.");
+        println!("If it had returned Ready on the first poll, there would have been no probem at all");
         //1. add to the tasks
         spawn(future);
 
