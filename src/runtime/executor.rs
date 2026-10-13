@@ -113,6 +113,18 @@ impl Executor {
     where
         F: Future<Output = String> + 'static,
     {
+        //if we proceed with the following code, it will store the future in a box, which gives it a stable location, and no matter how much you move it around,
+        //the future it is pointing to, will never move, and hence the internal pointers will never become invalid
+        //what if we dont let it reach all that and directly move it and see it break ?
+        let mut future = future;
+        match future.poll(&self.get_waker(999)) {
+            Ready(txt) => {
+                //this whole optimization, which is return immideatily if it is ready immideatily, 
+                //is just an excuse to prevent boxing, and break the whole thing
+                return;
+            },
+            NotReady => {}
+        }
         //1. add to the tasks
         spawn(future);
 
