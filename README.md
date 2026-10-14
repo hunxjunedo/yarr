@@ -16,19 +16,19 @@ place to explore a simple implementation.
 
 ## What it demonstrates
 
-- A custom `Future` trait and `PollState` type, rather than
-  `std::future::Future`.
+- Rust's standard `std::future::Future` trait and task-waking APIs.
 - An executor that polls ready futures and parks its thread while tasks wait.
 - A `mio`-based reactor that registers I/O interest and wakes the associated
   executor when events arrive.
-- A multiple-executor architecture: the example drives separate top-level
-  futures on separate executor threads.
+- A multiple-executor helper that can drive separate top-level futures on
+  separate executor threads.
 
 This is not a work-stealing runtime. Futures are not moved between executors,
 and the design does not implement task migration or the broader coordination
-needed for a production runtime. The custom future interface now supports
-pinning: futures are polled through `Pin<&mut Self>` and the executor stores
-them as `Pin<Box<dyn Future<...>>>`. 
+needed for a production runtime. The executor stores pinned futures and polls
+them through Rust's standard `Pin`, `Context`, `Poll`, and `Waker` APIs. Its
+custom `Wake` implementation connects Rust's waker mechanism to this runtime's
+ready queue and parked threads.
 
 ## Run the example
 
@@ -39,17 +39,18 @@ server on that address before running it:
 cargo run
 ```
 
-The executable launches multiple requests and prints the last line of each
-response. Without a server listening locally on port `8080`, the example will
-not work as intended.
+The executable makes two HTTP requests sequentially and prints their responses.
+Without a server listening locally on port `8080`, the example will not work as
+intended. The source also contains a `join_all` helper for running multiple
+unit-output futures on separate executor threads; see the
+[codebase overview](./CODEBASE_OVERVIEW.md).
 
 ## Project layout
 
-- `src/future.rs` — custom future and polling types.
 - `src/runtime/executor.rs` — task polling, ready queue, and thread waker.
 - `src/runtime/reactor.rs` — I/O event loop and waker registration.
 - `src/http.rs` — a minimal non-blocking HTTP GET future.
-- `src/main.rs` — hand-written state-machine future and multi-executor demo.
+- `src/main.rs` — async entry point and a multi-executor example helper.
 
 For a high-level walkthrough of how these pieces work together, see the
 [codebase overview](./CODEBASE_OVERVIEW.md).
