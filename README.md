@@ -26,8 +26,9 @@ place to explore a simple implementation.
 
 This is not a work-stealing runtime. Futures are not moved between executors,
 and the design does not implement task migration or the broader coordination
-needed for a production runtime. It also has no pinning yet; its custom future
-interface uses `&mut self` directly.
+needed for a production runtime. The custom future interface now supports
+pinning: futures are polled through `Pin<&mut Self>` and the executor stores
+them as `Pin<Box<dyn Future<...>>>`. 
 
 ## Run the example
 

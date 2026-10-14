@@ -45,6 +45,12 @@ When there is no ready task but unfinished work remains, the executor parks
 its thread. A waker can enqueue a task ID and unpark that thread. When no tasks
 remain, `block_on` returns.
 
+Before polling, `block_on` pins the top-level future in a `Box`. The task map
+keeps that pinned allocation, and the executor polls through its pinned
+reference each time the task is resumed. This lets the custom future interface
+use `Pin<&mut Self>` and supports futures that rely on remaining at a stable
+memory address after polling begins.
+
 ## 3. Poll the HTTP future
 
 `Http::get` in `src/http.rs` creates an `HttpGetFuture`. On its first poll, the
@@ -80,8 +86,9 @@ the reactor waits for I/O readiness and signals which executor should resume.
 ## 5. How the modules fit together
 
 - `src/future.rs` defines YARR's own `Future` trait and its `Ready` /
-  `NotReady` polling result. It is deliberately separate from the standard
-  library's future trait and has no pinning.
+  `NotReady` polling result. Its `poll` method takes `Pin<&mut Self>`, making
+  pinning part of the custom future interface. It is separate from the standard
+  library's future trait.
 - `src/runtime.rs` exposes the executor, waker, reactor accessor, and runtime
   initialization function.
 - `src/runtime/executor.rs` owns the per-thread task loop, ready queue, and
@@ -105,7 +112,7 @@ build as standalone binaries.
 
 The example assumes an HTTP server is already listening at
 `127.0.0.1:8080`. It is educational code, not production infrastructure. In
-particular, its custom futures are not pinned, it does not implement work
-stealing, and its error handling and lifecycle management are intentionally
-minimal. The [main README](./README.md) has the broader cautions and further
-reading links.
+particular, although futures are pinned before polling, the runtime does not
+implement work stealing, and its error handling and lifecycle management are
+intentionally minimal. The [main README](./README.md) has the broader cautions
+and further reading links.

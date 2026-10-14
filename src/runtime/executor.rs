@@ -124,6 +124,8 @@ impl Executor {
         }
         println!("Your future did not return Ready on the first poll. \n It has been polled once and we are going to move it, which means the internal pointers will become invalid, and the second poll will panic.");
         println!("If it had returned Ready on the first poll, there would have been no probem at all");
+        println!("IGNORE THE ABOVE WARNING");
+        println!("you need not to worry anymore, because pin is to the rescue; it won't let you shoot in your foot.");
         //1. add to the tasks
         spawn(future);
 
