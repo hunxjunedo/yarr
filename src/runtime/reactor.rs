@@ -1,8 +1,8 @@
-use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock, atomic::{AtomicUsize, Ordering::Relaxed},}, thread};
+use std::{collections::HashMap, sync::{Arc, Mutex, OnceLock, atomic::{AtomicUsize, Ordering::Relaxed},}, task::{Context, Waker}, thread};
 
 use mio::{Events, Interest, Poll, Registry, event::Source};
 
-use crate::runtime::{Waker};
+
 
 // allow leaf futures to register interest and pass there wakers. Once an event has occured, call the corresponding waker's wake.
 type Wakers = Arc<Mutex<HashMap<usize, Waker>>>; //since this data will be written by futures on different threads, mutex therefore
@@ -26,11 +26,11 @@ pub fn reactor() -> &'static Reactor {
 //ofcourse the reactor should expose functions that allow futures to register interest in some I/O
 
 impl Reactor {
-    pub fn register(&self, source: &mut impl Source, interest: Interest, id: usize, waker: &Waker) {
+    pub fn register(&self, source: &mut impl Source, interest: Interest, id: usize, cx: &mut Context) {
         //add to registry
-        self.registry.register(source, mio::Token(id), interest);
+        _ = self.registry.register(source, mio::Token(id), interest);
         //now register waker
-        self.wakers.lock().unwrap().insert(id, waker.clone());
+        self.wakers.lock().unwrap().insert(id, cx.waker().clone());
     }
 
     //our runtime does not support work-stealing as of not, which means futures won't move from one executor to another -> the sleeping thread which is supposed to be woken up for our future will never change -> waker will remain valid through out
@@ -41,9 +41,9 @@ impl Reactor {
 
     //the poll function of a future is responsible for making sure interest is registered on the latest waker, which can be achieved by
     //always calling update_waker before ending a poll (returning NotReady)
-    pub fn update_waker(&self, id: usize, waker: &Waker) {
+    pub fn update_waker(&self, id: usize, cx: &mut Context) {
         //automatically updates
-        self.wakers.lock().unwrap().insert(id, waker.clone());
+        self.wakers.lock().unwrap().insert(id, cx.waker().clone().into());
     }
     pub fn next_id(&self) -> usize {
         //give out next id, by incrementing. atomically safe.
@@ -55,7 +55,7 @@ impl Reactor {
         //if we unregistered with mio we wont recieve any associated events, so why even keep the waker in memory ?
         self.wakers.lock().unwrap().remove(&id);
         //now actually unregister with mio
-        self.registry.deregister(source);
+        _ = self.registry.deregister(source);
 
     }
 
@@ -65,13 +65,13 @@ impl Reactor {
         //this is responsible for wait on mulitple events. If an event occurs, call wake on associated waker
         let mut events = Events::with_capacity(100);
         loop {
-            poll.poll(&mut events, None);
+            _ = poll.poll(&mut events, None);
             //reaches here once some event happens
             for event in events.iter() {
                 let id = event.token().0;
                 //find the corresponsing worker and call wake on it
                 if let Some(waker) = wakers.lock().unwrap().get(&id) {
-                    waker.wake();
+                    waker.clone().wake();
                 }
             }
         }
@@ -84,7 +84,7 @@ impl Reactor {
         let wakers: Wakers = Arc::new(Mutex::new(HashMap::new()));
         let poll = Poll::new().unwrap();
         //almost there, the event loop will look on the static variable holding current executor, so let's place it there
-        CURRENT_REACTOR.set(Reactor { wakers: wakers.clone(), registry : poll.registry().try_clone().unwrap(), next_id: AtomicUsize::new(1) });
+        _ = CURRENT_REACTOR.set(Reactor { wakers: wakers.clone(), registry : poll.registry().try_clone().unwrap(), next_id: AtomicUsize::new(1) });
         //static variable has the value, now kick off the event loop
         //move because we dont need anymore
         thread::spawn(move || {

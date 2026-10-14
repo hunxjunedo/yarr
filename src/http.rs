@@ -1,5 +1,6 @@
 use mio::{Interest};
-use crate::{future::Future, future::Poll, runtime::{Waker, reactor}};
+use crate::{runtime::{reactor}};
+use std::{future::Future, task::{Context, Poll}};
 use std::{io::{ErrorKind, Read, Write}, pin::Pin};
 
 fn get_req(path: &str) -> String {
@@ -48,7 +49,7 @@ impl HttpGetFuture {
 impl Future for HttpGetFuture {
     type Output = String;
 
-    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> Poll<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         println!("POLL!!!");
         if self.stream.is_none() {
             println!("FIRST POLL - START OPERATION");
@@ -56,7 +57,7 @@ impl Future for HttpGetFuture {
             self.as_mut().write_request();
             let stream = self.stream.as_mut().unwrap();
             //updated method of registering interest
-            reactor().register(stream, Interest::READABLE, id, waker);
+            reactor().register(stream, Interest::READABLE, id, cx);
             // return Poll::Pending;
             // principle of polling: do not yield until you absolutely have to wait on something. You dont necessirily have to wait on stream, UNLESS it says would block.
         }
@@ -77,7 +78,7 @@ impl Future for HttpGetFuture {
                 }
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
                     //we are about to return, so lets make sure latest waker is associated, check the comments on top of function implementation for more details
-                    reactor().update_waker(self.id, waker);
+                    reactor().update_waker(self.id, cx);
                     break Poll::Pending;
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {

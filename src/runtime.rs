@@ -1,9 +1,9 @@
-use std::thread::Builder;
+use std::{thread::Builder};
 
-pub use executor::{Executor, Waker};
+pub use executor::{Executor};
 pub use reactor::{reactor};
+use std::{future::Future};
 
-use crate::future;
 mod executor;
 mod reactor;
 pub fn init() -> Executor {
@@ -11,7 +11,7 @@ pub fn init() -> Executor {
     Executor::new()
 }
 
-pub fn join_all<T: future::Future<Output = String> + Send + 'static>(mut futures: Vec<T>) {
+pub fn join_all<T: Future<Output = ()> + Send + 'static>(mut futures: Vec<T>) {
     //in order to kick off the reactor:
     let mut executor = init();
     //now a reactor has started, it is listening to all the events. 

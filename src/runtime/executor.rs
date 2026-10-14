@@ -1,21 +1,19 @@
-use crate::future::{
-    Future,
-    Poll::{Pending, Ready},
-};
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, pin::Pin, sync::{Arc, Mutex}, thread::{self, Thread},
+    cell::{Cell, RefCell}, collections::HashMap, pin::Pin, sync::{Arc, Mutex}, task::{
+        Context, Poll::{Pending, Ready}, Wake,
+    }, thread::{self, Thread},
 };
 
 #[derive(Clone)]
-pub struct Waker {
+pub struct CustomWaker {
     //something responsible for waking a particular thread
     thread: Thread, //handle to the thread which is parked, waiting for some event
     id: usize,
     ready_queue: Arc<Mutex<Vec<usize>>>, //remember, a thread might be parked but could be becuase of more than one events. Each waker is associated with an event/task. While Waker does unpark a thread, the thread still has to check which event triggered, since other events might still be uncomplete. Therefore push our id to a vec, which is mutable across threads (done so by mutex) and owned by many (done so by arc).
 }
 
-impl Waker {
-    pub fn wake(&self) {
+impl Wake for CustomWaker {
+    fn wake(self: Arc<Self>) {
         //push to the list to let the thread know this task can progress
         self.ready_queue
             .lock()
@@ -26,7 +24,7 @@ impl Waker {
     }
 }
 
-type Task = Pin<Box<dyn Future<Output = String>>>;
+type Task = Pin<Box<dyn Future<Output = ()>>>;
 #[derive(Default)]
 struct ExecutorCore {
     //remember, since this is a static variable, you cannot mutate, you need interior mutability
@@ -41,9 +39,7 @@ thread_local! {
 }
 
 //spawning new futures. aka handling them to the executor
-pub fn spawn(f: Task)
-
-{
+pub fn spawn(f: Task) {
     //register interest.
     CURRENT_EXEC.with(|v| {
         let id = v.next_id.get();
@@ -68,12 +64,12 @@ impl Executor {
     //id means the unique top-level task. when our I/O calls regsiter interest, they pass a waker which has embedded into it an id associated with that particular event. many wakers might wake up the thread, but every waker is able to tell who is responsible for triggering wake-up/unpark
     //this id allows the executor to decide which top-level future is now ready to poll
     //this waker can be passed on when registering interest with another api, and that api will use the
-    pub fn get_waker(&self, id: usize) -> Waker {
-        Waker {
+    pub fn get_waker(&self, id: usize) -> Arc<CustomWaker> {
+        Arc::new(CustomWaker {
             thread: thread::current(),
             id,
             ready_queue: CURRENT_EXEC.with(|v| Arc::clone(&v.ready_queue)),
-        }
+        })
     }
 
     //what happens when executor actually wants to poll the futures present in the ready queue ? Those are waiting to be progressed.
@@ -107,25 +103,31 @@ impl Executor {
     //finally, we want to provide a function that the main thread blocks on, until no tasks left.
     pub fn block_on<F>(&mut self, future: F)
     where
-        F: Future<Output = String> + 'static,
+        F: Future<Output = ()> + 'static,
     {
         //if we proceed with the following code, it will store the future in a box, which gives it a stable location, and no matter how much you move it around,
         //the future it is pointing to, will never move, and hence the internal pointers will never become invalid
         //what if we dont let it reach all that and directly move it and see it break ?
         let mut future = Box::pin(future);
         //UPDATE: once we introduce the pinning support, we cant just poll the future directly! It has to be pinned.
-        match future.as_mut().poll(&self.get_waker(999)) {
-            Ready(txt) => {
-                //this whole optimization, which is return immideatily if it is ready immideatily, 
+        match future.as_mut().poll(&mut Context::from_waker(&self.get_waker(999).into())) {
+            Ready(_) => {
+                //this whole optimization, which is return immideatily if it is ready immideatily,
                 //is just an excuse to prevent boxing, and break the whole thing
                 return;
-            },
+            }
             Pending => {}
         }
-        println!("Your future did not return Ready on the first poll. \n It has been polled once and we are going to move it, which means the internal pointers will become invalid, and the second poll will panic.");
-        println!("If it had returned Ready on the first poll, there would have been no probem at all");
+        println!(
+            "Your future did not return Ready on the first poll. \n It has been polled once and we are going to move it, which means the internal pointers will become invalid, and the second poll will panic."
+        );
+        println!(
+            "If it had returned Ready on the first poll, there would have been no probem at all"
+        );
         println!("IGNORE THE ABOVE WARNING");
-        println!("you need not to worry anymore, because pin is to the rescue; it won't let you shoot in your foot.");
+        println!(
+            "you need not to worry anymore, because pin is to the rescue; it won't let you shoot in your foot."
+        );
         //1. add to the tasks
         spawn(future);
 
@@ -143,7 +145,7 @@ impl Executor {
                 }
                 //          called shadowing
                 let mut ft = ft.unwrap();
-                match ft.as_mut().poll(&self.get_waker(id)) {
+                match ft.as_mut().poll(&mut Context::from_waker(&self.get_waker(id).into())) {
                     Pending => {
                         //add it back to the tasks, we have done polling it till waitpoint
                         self.new_task(id, ft);
