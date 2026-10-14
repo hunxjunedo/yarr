@@ -1,9 +1,9 @@
 use crate::future::{
     Future,
-    PollState::{NotReady, Ready},
+    Poll::{Pending, Ready},
 };
 use std::{
-    cell::{Cell, RefCell}, collections::HashMap, pin::{Pin}, sync::{Arc, Mutex}, thread::{self, Thread},
+    cell::{Cell, RefCell}, collections::HashMap, pin::Pin, sync::{Arc, Mutex}, thread::{self, Thread},
 };
 
 #[derive(Clone)]
@@ -78,13 +78,13 @@ impl Executor {
 
     //what happens when executor actually wants to poll the futures present in the ready queue ? Those are waiting to be progressed.
     //Suppose we had a multi-threaded environment where work-stealing was also possible. If an executor (which there will be many of, running on multiple threads) wants to poll some future till waitpoint, it has to remove it from the list so others can't also poll it.
-    //therefore, remove future from the list, poll it, if you get NotReady put it back. if you get ready, well you are done!
+    //therefore, remove future from the list, poll it, if you get Pending put it back. if you get ready, well you are done!
 
     fn get_future(&self, id: usize) -> Option<Task> {
         CURRENT_EXEC.with(|v| v.tasks.borrow_mut().remove(&id))
     }
 
-    //part 2: once the executor has done polling a future, and recieved NotReady. which means it can now leave it for a while, add it back to the tasks. This is the opposite of get_future.
+    //part 2: once the executor has done polling a future, and recieved Pending. which means it can now leave it for a while, add it back to the tasks. This is the opposite of get_future.
     //if it recieved ready, it would mean no more progress to make, and no need to add it back
     fn new_task(&self, id: usize, task: Task) {
         CURRENT_EXEC.with(|v| v.tasks.borrow_mut().insert(id, task));
@@ -92,7 +92,7 @@ impl Executor {
 
     //now the part where we actually pick up the the futures that are ready to poll, and poll them one by one.
     //this will be in a continous loop, if no one is ready we just park the thread! wait for someone to be ready, which will unpark! How elegant!
-    //we take future that's ready to be polled (aka it caused a wake to be called). we poll it. handle the business logic (NotReady vs Ready), and then pick another future.
+    //we take future that's ready to be polled (aka it caused a wake to be called). we poll it. handle the business logic (Pending vs Ready), and then pick another future.
     //using LIFO approach, so one that completed latest gets handled earliest
     fn get_ready_future(&self) -> Option<usize> {
         CURRENT_EXEC.with(|v| v.ready_queue.lock().unwrap().pop())
@@ -120,7 +120,7 @@ impl Executor {
                 //is just an excuse to prevent boxing, and break the whole thing
                 return;
             },
-            NotReady => {}
+            Pending => {}
         }
         println!("Your future did not return Ready on the first poll. \n It has been polled once and we are going to move it, which means the internal pointers will become invalid, and the second poll will panic.");
         println!("If it had returned Ready on the first poll, there would have been no probem at all");
@@ -144,7 +144,7 @@ impl Executor {
                 //          called shadowing
                 let mut ft = ft.unwrap();
                 match ft.as_mut().poll(&self.get_waker(id)) {
-                    NotReady => {
+                    Pending => {
                         //add it back to the tasks, we have done polling it till waitpoint
                         self.new_task(id, ft);
                     }

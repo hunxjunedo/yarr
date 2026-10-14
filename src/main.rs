@@ -1,6 +1,6 @@
 use std::{fmt::Write, pin::Pin};
 use crate::{
-    future::{Future, PollState},
+    future::{Future, Poll},
     runtime::Waker,
 };
 
@@ -48,7 +48,7 @@ impl Coroutine0 {
 impl Future for Coroutine0 {
     type Output = String;
 
-    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> PollState<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> Poll<Self::Output> {
         loop {
             match self.state {
                 State0::Start => {
@@ -65,7 +65,7 @@ impl Future for Coroutine0 {
 
                 State0::Wait1(ref mut f1) => {
                     match f1.as_mut().poll(waker) {
-                        PollState::Ready(txt) => {
+                        Poll::Ready(txt) => {
                             //get the writer from the stack, lets see what happens if future is moved in between polls.
                             println!("{:?}", unsafe{& *self.state_data.writer.clone().unwrap()});
                             let writer = unsafe {&mut *self.state_data.writer.take().unwrap()};
@@ -78,13 +78,13 @@ impl Future for Coroutine0 {
                             //move the writer back to the state once you are done
                             self.state_data.writer = Some(writer);
                         }
-                        PollState::NotReady => break PollState::NotReady,
+                        Poll::Pending => break Poll::Pending,
                     }
                 }
 
                 State0::Wait2(ref mut f2) => {
                     match f2.as_mut().poll(waker) {
-                        PollState::Ready(txt) => {
+                        Poll::Ready(txt) => {
                             //retrieve data from the state
                             let writer = unsafe {&mut *self.state_data.writer.take().unwrap()};
                             writeln!(writer, "{txt}").unwrap();
@@ -103,10 +103,10 @@ impl Future for Coroutine0 {
                            //above line should print None
                            
 
-                            break PollState::Ready(String::new());
+                            break Poll::Ready(String::new());
                             
                         }
-                        PollState::NotReady => break PollState::NotReady,
+                        Poll::Pending => break Poll::Pending,
                     }
                 }
 

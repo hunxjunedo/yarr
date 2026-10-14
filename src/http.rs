@@ -1,5 +1,5 @@
-use mio::{Interest, Token};
-use crate::{future::Future, future::PollState, runtime::{self, Waker, reactor}};
+use mio::{Interest};
+use crate::{future::Future, future::Poll, runtime::{Waker, reactor}};
 use std::{io::{ErrorKind, Read, Write}, pin::Pin};
 
 fn get_req(path: &str) -> String {
@@ -48,7 +48,7 @@ impl HttpGetFuture {
 impl Future for HttpGetFuture {
     type Output = String;
 
-    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> PollState<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> Poll<Self::Output> {
         println!("POLL!!!");
         if self.stream.is_none() {
             println!("FIRST POLL - START OPERATION");
@@ -57,7 +57,7 @@ impl Future for HttpGetFuture {
             let stream = self.stream.as_mut().unwrap();
             //updated method of registering interest
             reactor().register(stream, Interest::READABLE, id, waker);
-            // return PollState::NotReady;
+            // return Poll::Pending;
             // principle of polling: do not yield until you absolutely have to wait on something. You dont necessirily have to wait on stream, UNLESS it says would block.
         }
 
@@ -69,7 +69,7 @@ impl Future for HttpGetFuture {
                     let s = String::from_utf8_lossy(&self.buffer).into_owned();
                     //we are returning here too, we are no longer interested in this stream, so un_register
                     reactor().unregister(self.stream.as_mut().unwrap(), id);
-                    break PollState::Ready(s);
+                    break Poll::Ready(s);
                 }
                 Ok(n) => {
                     self.buffer.extend(&buff[0..n]);
@@ -78,7 +78,7 @@ impl Future for HttpGetFuture {
                 Err(e) if e.kind() == ErrorKind::WouldBlock => {
                     //we are about to return, so lets make sure latest waker is associated, check the comments on top of function implementation for more details
                     reactor().update_waker(self.id, waker);
-                    break PollState::NotReady;
+                    break Poll::Pending;
                 }
                 Err(e) if e.kind() == ErrorKind::Interrupted => {
                     continue;
