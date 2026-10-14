@@ -12,6 +12,10 @@ pub fn init() -> Executor {
 }
 
 pub fn join_all<T: Future<Output = ()> + Send + 'static>(mut futures: Vec<T>) {
+    //why does the output define unit ? why not take a generic ?
+    //I did try to make everything generic up to the executor, but turns out rust does not allow static generics (and executor has to be static at the top)
+    //other runtimes like tokio do this by providing a join_handle
+                    
     //in order to kick off the reactor:
     let mut executor = init();
     //now a reactor has started, it is listening to all the events. 
