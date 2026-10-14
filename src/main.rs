@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::{fmt::Write, pin::Pin};
 use crate::{
     future::{Future, PollState},
     runtime::Waker,
@@ -21,8 +21,8 @@ fn async_main() -> impl Future<Output = String> {
 
 enum State0 {
     Start,
-    Wait1(Box<dyn Future<Output = String>>),
-    Wait2(Box<dyn Future<Output = String>>),
+    Wait1(Pin<Box<dyn Future<Output = String>>>),
+    Wait2(Pin<Box<dyn Future<Output = String>>>),
     Resolved,
 }
 
@@ -48,7 +48,7 @@ impl Coroutine0 {
 impl Future for Coroutine0 {
     type Output = String;
 
-    fn poll(&mut self, waker: &Waker) -> PollState<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> PollState<Self::Output> {
         loop {
             match self.state {
                 State0::Start => {
@@ -58,13 +58,13 @@ impl Future for Coroutine0 {
                     println!("Program starting");
 
                     
-                    let fut1 = Box::new(http::Http::get("/600/HelloAsyncAwait".to_string()));
+                    let fut1 = Box::pin(http::Http::get("/600/HelloAsyncAwait".to_string()));
                     self.state = State0::Wait1(fut1);
                    
                 }
 
                 State0::Wait1(ref mut f1) => {
-                    match f1.poll(waker) {
+                    match f1.as_mut().poll(waker) {
                         PollState::Ready(txt) => {
                             //get the writer from the stack, lets see what happens if future is moved in between polls.
                             println!("{:?}", unsafe{& *self.state_data.writer.clone().unwrap()});
@@ -73,7 +73,7 @@ impl Future for Coroutine0 {
 
                             
                             let fut2 =
-                                Box::new(http::Http::get("/400/HelloAsyncAwait".to_string()));
+                                Box::pin(http::Http::get("/400/HelloAsyncAwait".to_string()));
                             self.state = State0::Wait2(fut2);
                             //move the writer back to the state once you are done
                             self.state_data.writer = Some(writer);
@@ -83,7 +83,7 @@ impl Future for Coroutine0 {
                 }
 
                 State0::Wait2(ref mut f2) => {
-                    match f2.poll(waker) {
+                    match f2.as_mut().poll(waker) {
                         PollState::Ready(txt) => {
                             //retrieve data from the state
                             let writer = unsafe {&mut *self.state_data.writer.take().unwrap()};

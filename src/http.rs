@@ -1,6 +1,6 @@
 use mio::{Interest, Token};
 use crate::{future::Future, future::PollState, runtime::{self, Waker, reactor}};
-use std::io::{ErrorKind, Read, Write};
+use std::{io::{ErrorKind, Read, Write}, pin::Pin};
 
 fn get_req(path: &str) -> String {
     format!(
@@ -48,14 +48,15 @@ impl HttpGetFuture {
 impl Future for HttpGetFuture {
     type Output = String;
 
-    fn poll(&mut self, waker: &Waker) -> PollState<Self::Output> {
+    fn poll(mut self: Pin<&mut Self>, waker: &Waker) -> PollState<Self::Output> {
         println!("POLL!!!");
         if self.stream.is_none() {
             println!("FIRST POLL - START OPERATION");
-            self.write_request();
+            let id = self.id;
+            self.as_mut().write_request();
             let stream = self.stream.as_mut().unwrap();
             //updated method of registering interest
-            reactor().register(stream, Interest::READABLE, self.id, waker);
+            reactor().register(stream, Interest::READABLE, id, waker);
             // return PollState::NotReady;
             // principle of polling: do not yield until you absolutely have to wait on something. You dont necessirily have to wait on stream, UNLESS it says would block.
         }
@@ -64,10 +65,11 @@ impl Future for HttpGetFuture {
         loop {
             match self.stream.as_mut().unwrap().read(&mut buff) {
                 Ok(0) => {
-                    let s = String::from_utf8_lossy(&self.buffer);
+                    let id = self.id;
+                    let s = String::from_utf8_lossy(&self.buffer).into_owned();
                     //we are returning here too, we are no longer interested in this stream, so un_register
-                    reactor().unregister(self.stream.as_mut().unwrap(), self.id);
-                    break PollState::Ready(s.to_string());
+                    reactor().unregister(self.stream.as_mut().unwrap(), id);
+                    break PollState::Ready(s);
                 }
                 Ok(n) => {
                     self.buffer.extend(&buff[0..n]);

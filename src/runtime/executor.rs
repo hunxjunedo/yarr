@@ -3,10 +3,7 @@ use crate::future::{
     PollState::{NotReady, Ready},
 };
 use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    thread::{self, Thread},
+    cell::{Cell, RefCell}, collections::HashMap, pin::{Pin}, sync::{Arc, Mutex}, thread::{self, Thread},
 };
 
 #[derive(Clone)]
@@ -29,7 +26,7 @@ impl Waker {
     }
 }
 
-type Task = Box<dyn Future<Output = String>>;
+type Task = Pin<Box<dyn Future<Output = String>>>;
 #[derive(Default)]
 struct ExecutorCore {
     //remember, since this is a static variable, you cannot mutate, you need interior mutability
@@ -51,7 +48,7 @@ where
     //register interest.
     CURRENT_EXEC.with(|v| {
         let id = v.next_id.get();
-        v.tasks.borrow_mut().insert(id, Box::new(f));
+        v.tasks.borrow_mut().insert(id, Box::pin(f));
         //we have told the executor that this is also one of the tasks it should be handling
         //now tell it to poll it also, since futures are eager, and you have to poll first time also
         v.next_id.set(id + 1);
@@ -117,6 +114,7 @@ impl Executor {
         //the future it is pointing to, will never move, and hence the internal pointers will never become invalid
         //what if we dont let it reach all that and directly move it and see it break ?
         let mut future = future;
+        //UPDATE: once we introduce the pinning support, we cant just poll the future directly! It has to be pinned.
         match future.poll(&self.get_waker(999)) {
             Ready(txt) => {
                 //this whole optimization, which is return immideatily if it is ready immideatily, 
@@ -144,7 +142,7 @@ impl Executor {
                 }
                 //          called shadowing
                 let mut ft = ft.unwrap();
-                match ft.poll(&self.get_waker(id)) {
+                match ft.as_mut().poll(&self.get_waker(id)) {
                     NotReady => {
                         //add it back to the tasks, we have done polling it till waitpoint
                         self.new_task(id, ft);
