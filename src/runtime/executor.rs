@@ -41,14 +41,13 @@ thread_local! {
 }
 
 //spawning new futures. aka handling them to the executor
-pub fn spawn<F>(f: F)
-where
-    F: Future<Output = String> + 'static,
+pub fn spawn(f: Task)
+
 {
     //register interest.
     CURRENT_EXEC.with(|v| {
         let id = v.next_id.get();
-        v.tasks.borrow_mut().insert(id, Box::pin(f));
+        v.tasks.borrow_mut().insert(id, f);
         //we have told the executor that this is also one of the tasks it should be handling
         //now tell it to poll it also, since futures are eager, and you have to poll first time also
         v.next_id.set(id + 1);
@@ -113,9 +112,9 @@ impl Executor {
         //if we proceed with the following code, it will store the future in a box, which gives it a stable location, and no matter how much you move it around,
         //the future it is pointing to, will never move, and hence the internal pointers will never become invalid
         //what if we dont let it reach all that and directly move it and see it break ?
-        let mut future = future;
+        let mut future = Box::pin(future);
         //UPDATE: once we introduce the pinning support, we cant just poll the future directly! It has to be pinned.
-        match future.poll(&self.get_waker(999)) {
+        match future.as_mut().poll(&self.get_waker(999)) {
             Ready(txt) => {
                 //this whole optimization, which is return immideatily if it is ready immideatily, 
                 //is just an excuse to prevent boxing, and break the whole thing
